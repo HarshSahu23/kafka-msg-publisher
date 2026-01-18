@@ -72,11 +72,15 @@ async fn save_kafka_config(
     Ok(config.save().into())
 }
 
-/// Test connection to Kafka broker
+/// Test connection to Kafka broker with timeout
 #[tauri::command]
-async fn test_kafka_connection(state: State<'_, AppState>) -> Result<CommandResult<bool>, ()> {
+async fn test_kafka_connection(
+    state: State<'_, AppState>,
+    timeout_secs: Option<u64>,
+) -> Result<CommandResult<bool>, ()> {
     let service = state.kafka_service.lock().await;
-    Ok(service.test_connection().await.into())
+    let timeout = timeout_secs.unwrap_or(5); // Default 5 second timeout
+    Ok(service.test_connection(timeout).await.into())
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -89,6 +93,7 @@ pub fn run() {
 
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_fs::init())
         .manage(app_state)
         .invoke_handler(tauri::generate_handler![
             send_kafka_message,

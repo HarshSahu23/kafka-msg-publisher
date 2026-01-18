@@ -276,3 +276,100 @@
   width: 16px;
   height: 16px;
 }
+
+/* Settings Header */
+.settings-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: var(--spacing-sm);
+}
+
+.theme-toggle-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.theme-toggle-btn:hover {
+  background: var(--bg-card-hover);
+  border-color: var(--border-hover);
+  color: var(--accent-primary);
+}
+
+.theme-toggle-btn .icon {
+  width: 18px;
+  height: 18px;
+}
+
+/* Testing Indicator */
+.testing-indicator {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+}
+
+/* Danger Button */
+.btn-danger {
+  background: linear-gradient(135deg, var(--error) 0%, #dc2626 100%);
+  border-color: transparent;
+  color: white;
+}
+
+.btn-danger:hover {
+  background: linear-gradient(135deg, #dc2626 0%, var(--error) 100%);
+  box-shadow: 0 0 20px rgba(239, 68, 68, 0.3);
+}
+
+/* Config Spacer */
+.config-spacer {
+  flex: 1;
+}
+
+/* Connection Status Indicator */
+.connection-status {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  cursor: help;
+}
+
+.status-icon {
+  width: 22px;
+  height: 22px;
+  transition: all var(--transition-fast);
+}
+
+.status-connected {
+  color: var(--success);
+  filter: drop-shadow(0 0 6px var(--success));
+}
+
+.status-error {
+  color: var(--error);
+  filter: drop-shadow(0 0 6px var(--error));
+  animation: pulse 2s infinite;
+}
+
+.status-unknown {
+  color: var(--warning);
+}
+
+.status-testing {
+  width: 18px;
+  height: 18px;
+  border-color: var(--warning);
+  border-top-color: transparent;
+}
+

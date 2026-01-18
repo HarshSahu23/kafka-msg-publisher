@@ -28,6 +28,9 @@ pub enum KafkaError {
 
     #[error("Invalid configuration: {0}")]
     InvalidConfig(String),
+
+    #[error("Connection timeout after {0} seconds")]
+    ConnectionTimeout(u64),
 }
 
 /// Kafka service for managing connections and sending messages
@@ -51,16 +54,20 @@ impl KafkaService {
         self.config.lock().await.clone()
     }
 
-    /// Test connection to the Kafka broker
-    pub async fn test_connection(&self) -> Result<bool, KafkaError> {
+    /// Test connection to the Kafka broker with timeout
+    pub async fn test_connection(&self, timeout_secs: u64) -> Result<bool, KafkaError> {
         let config = self.config.lock().await;
         
-        ClientBuilder::new(vec![config.broker.clone()])
-            .build()
-            .await
-            .map_err(|e| KafkaError::ConnectionFailed(e.to_string()))?;
-
-        Ok(true)
+        let connect_future = ClientBuilder::new(vec![config.broker.clone()]).build();
+        
+        match tokio::time::timeout(
+            std::time::Duration::from_secs(timeout_secs),
+            connect_future
+        ).await {
+            Ok(Ok(_)) => Ok(true),
+            Ok(Err(e)) => Err(KafkaError::ConnectionFailed(e.to_string())),
+            Err(_) => Err(KafkaError::ConnectionTimeout(timeout_secs)),
+        }
     }
 
     /// Send a message to the configured topic

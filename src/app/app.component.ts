@@ -1,7 +1,9 @@
-import { Component, OnInit, HostListener } from '@angular/core';
+import { Component, OnInit, HostListener, OnDestroy } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { TauriService, KafkaConfig, MessageEntry } from './services/tauri.service';
+import { listen, UnlistenFn } from '@tauri-apps/api/event';
+import { readTextFile } from '@tauri-apps/plugin-fs';
 
 @Component({
   selector: 'app-root',
@@ -10,7 +12,7 @@ import { TauriService, KafkaConfig, MessageEntry } from './services/tauri.servic
   templateUrl: './app.component.html',
   styleUrl: './app.component.css',
 })
-export class AppComponent implements OnInit {
+export class AppComponent implements OnInit, OnDestroy {
   // Configuration
   config: KafkaConfig = {
     broker: 'localhost:9092',
@@ -29,12 +31,75 @@ export class AppComponent implements OnInit {
   isSending = false;
   showSettings = false;
   isDragOver = false;
-  connectionStatus: 'unknown' | 'connected' | 'error' = 'unknown';
+  isTesting = false;
+  testingCancelled = false;
+  connectionStatus: 'unknown' | 'connected' | 'error' | 'testing' = 'unknown';
+  
+  // Theme
+  isDarkMode = true;
+
+  // Tauri event listener
+  private unlistenFileDrop: UnlistenFn | null = null;
 
   constructor(private tauriService: TauriService) {}
 
   async ngOnInit() {
     await this.loadConfig();
+    await this.setupFileDropListener();
+    this.loadThemePreference();
+    
+    // Auto-test connection on startup with spinner
+    this.checkConnectionWithSpinner();
+  }
+
+  ngOnDestroy() {
+    if (this.unlistenFileDrop) {
+      this.unlistenFileDrop();
+    }
+  }
+
+  loadThemePreference() {
+    const savedTheme = localStorage.getItem('theme');
+    if (savedTheme === 'light') {
+      this.isDarkMode = false;
+      document.documentElement.setAttribute('data-theme', 'light');
+    }
+  }
+
+  toggleTheme() {
+    this.isDarkMode = !this.isDarkMode;
+    const theme = this.isDarkMode ? 'dark' : 'light';
+    document.documentElement.setAttribute('data-theme', theme);
+    localStorage.setItem('theme', theme);
+  }
+
+  async setupFileDropListener() {
+    try {
+      // Listen for Tauri's native file drop events
+      this.unlistenFileDrop = await listen<{ paths: string[] }>('tauri://drag-drop', async (event) => {
+        const paths = event.payload.paths;
+        if (paths && paths.length > 0) {
+          try {
+            const content = await readTextFile(paths[0]);
+            this.messageContent = content;
+            this.isDragOver = false;
+          } catch (error) {
+            console.error('Failed to read dropped file:', error);
+          }
+        }
+      });
+
+      // Listen for drag enter/leave for visual feedback
+      await listen('tauri://drag-enter', () => {
+        this.isDragOver = true;
+      });
+
+      await listen('tauri://drag-leave', () => {
+        this.isDragOver = false;
+      });
+    } catch (error) {
+      console.error('Failed to setup drag-drop listener:', error);
+    }
   }
 
   async loadConfig() {
@@ -49,24 +114,82 @@ export class AppComponent implements OnInit {
     try {
       await this.tauriService.saveConfig(this.config);
       this.showSettings = false;
+      // Re-check connection after config change
+      this.checkConnectionWithSpinner();
     } catch (error) {
       console.error('Failed to save config:', error);
     }
   }
 
-  async testConnection() {
-    this.isLoading = true;
-    this.connectionStatus = 'unknown';
+  async checkConnectionWithSpinner() {
+    // Connection check with minimum 800ms spinner for smooth UX
+    this.connectionStatus = 'testing';
+    
+    const startTime = Date.now();
+    let result: 'connected' | 'error' = 'error';
     
     try {
-      await this.tauriService.testConnection();
-      this.connectionStatus = 'connected';
+      await this.tauriService.testConnection(3);
+      result = 'connected';
     } catch (error) {
-      this.connectionStatus = 'error';
-      console.error('Connection test failed:', error);
-    } finally {
-      this.isLoading = false;
+      result = 'error';
     }
+    
+    // Ensure minimum 800ms spinner duration
+    const elapsed = Date.now() - startTime;
+    if (elapsed < 800) {
+      await this.delay(800 - elapsed);
+    }
+    
+    this.connectionStatus = result;
+  }
+
+  async testConnection() {
+    if (this.isTesting) return;
+    
+    this.isTesting = true;
+    this.isLoading = true;
+    this.testingCancelled = false;
+    this.connectionStatus = 'testing'; // Clear previous status, show spinner
+    
+    const startTime = Date.now();
+    let result: 'connected' | 'error' = 'error';
+    
+    try {
+      await this.tauriService.testConnection(3); // 3 second timeout
+      if (!this.testingCancelled) {
+        result = 'connected';
+      }
+    } catch (error) {
+      if (!this.testingCancelled) {
+        result = 'error';
+        console.error('Connection test failed:', error);
+      }
+    }
+    
+    // Ensure minimum 800ms spinner duration
+    const elapsed = Date.now() - startTime;
+    if (elapsed < 800 && !this.testingCancelled) {
+      await this.delay(800 - elapsed);
+    }
+    
+    if (!this.testingCancelled) {
+      this.connectionStatus = result;
+    }
+    
+    this.isTesting = false;
+    this.isLoading = false;
+  }
+
+  private delay(ms: number): Promise<void> {
+    return new Promise(resolve => setTimeout(resolve, ms));
+  }
+
+  cancelTestConnection() {
+    this.testingCancelled = true;
+    this.isTesting = false;
+    this.isLoading = false;
+    this.connectionStatus = 'unknown';
   }
 
   async sendMessage() {
@@ -87,15 +210,18 @@ export class AppComponent implements OnInit {
       await this.tauriService.sendMessage(this.messageContent);
       entry.status = 'success';
       this.messageContent = '';
+      // Mark as connected if send succeeds
+      this.connectionStatus = 'connected';
     } catch (error: any) {
       entry.status = 'error';
       entry.errorMessage = error.message || 'Failed to send message';
+      this.connectionStatus = 'error';
     } finally {
       this.isSending = false;
     }
   }
 
-  // File drop handling
+  // Keep HostListener as fallback for web-based file drop (dev mode)
   @HostListener('dragover', ['$event'])
   onDragOver(event: DragEvent) {
     event.preventDefault();

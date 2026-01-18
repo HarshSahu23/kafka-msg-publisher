@@ -67,10 +67,10 @@ export class TauriService {
   }
 
   /**
-   * Test connection to Kafka broker
+   * Test connection to Kafka broker with timeout
    */
-  async testConnection(): Promise<boolean> {
-    const result = await invoke<CommandResult<boolean>>('test_kafka_connection');
+  async testConnection(timeoutSecs: number = 5): Promise<boolean> {
+    const result = await invoke<CommandResult<boolean>>('test_kafka_connection', { timeoutSecs });
     
     if (result.type === 'Ok') {
       return result.data as boolean;

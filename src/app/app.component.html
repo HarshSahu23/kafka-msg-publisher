@@ -21,7 +21,21 @@
   <!-- Settings Panel -->
   @if (showSettings) {
     <div class="settings-panel card animate-fade-in">
-      <h2>Configuration</h2>
+      <div class="settings-header">
+        <h2>Configuration</h2>
+        <button class="theme-toggle-btn" (click)="toggleTheme()" title="Toggle theme">
+          @if (isDarkMode) {
+            <svg class="icon" viewBox="0 0 24 24" fill="none">
+              <circle cx="12" cy="12" r="5" stroke="currentColor" stroke-width="2"/>
+              <path d="M12 1V3M12 21V23M4.22 4.22L5.64 5.64M18.36 18.36L19.78 19.78M1 12H3M21 12H23M4.22 19.78L5.64 18.36M18.36 5.64L19.78 4.22" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+            </svg>
+          } @else {
+            <svg class="icon" viewBox="0 0 24 24" fill="none">
+              <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+          }
+        </button>
+      </div>
       <div class="settings-grid">
         <div class="form-group">
           <label for="broker">Broker Address</label>
@@ -37,18 +51,26 @@
         </div>
       </div>
       <div class="settings-actions">
-        <button class="btn" (click)="testConnection()" [disabled]="isLoading">
-          @if (isLoading) {
+        @if (isTesting) {
+          <button class="btn btn-danger" (click)="cancelTestConnection()">
+            Cancel
+          </button>
+        } @else {
+          <button class="btn" (click)="testConnection()" [disabled]="isLoading">
+            Test Connection
+          </button>
+        }
+        @if (isLoading) {
+          <span class="testing-indicator">
             <span class="spinner"></span>
-          }
-          Test Connection
-        </button>
-        @if (connectionStatus === 'connected') {
+          </span>
+        }
+        @if (!isLoading && connectionStatus === 'connected') {
           <span class="badge badge-success">Connected</span>
-        } @else if (connectionStatus === 'error') {
+        } @else if (!isLoading && connectionStatus === 'error') {
           <span class="badge badge-error">Failed</span>
         }
-        <button class="btn btn-primary" (click)="saveConfig()">Save</button>
+        <button class="btn btn-primary" (click)="saveConfig()" [disabled]="isTesting">Save</button>
       </div>
     </div>
   }
@@ -65,6 +87,28 @@
       <div class="config-item">
         <span class="config-label">Topic</span>
         <span class="config-value text-mono">{{ config.topic }}</span>
+      </div>
+      <div class="config-spacer"></div>
+      <!-- Connection Status Indicator -->
+      <div class="connection-status" [title]="connectionStatus === 'connected' ? 'Connected' : connectionStatus === 'error' ? 'Disconnected' : connectionStatus === 'testing' ? 'Testing...' : 'Unknown'">
+        @if (connectionStatus === 'connected') {
+          <svg class="status-icon status-connected" viewBox="0 0 24 24" fill="none">
+            <path d="M20 6L9 17L4 12" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+        } @else if (connectionStatus === 'error') {
+          <svg class="status-icon status-error" viewBox="0 0 24 24" fill="none">
+            <circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="2"/>
+            <path d="M12 8V12M12 16H12.01" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+          </svg>
+        } @else if (connectionStatus === 'testing') {
+          <span class="spinner status-testing"></span>
+        } @else {
+          <svg class="status-icon status-unknown" viewBox="0 0 24 24" fill="none">
+            <circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="2"/>
+            <path d="M9 9C9 7.5 10.5 6.5 12 6.5C13.5 6.5 15 7.5 15 9C15 10.5 13.5 11 12 12V14" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+            <circle cx="12" cy="17" r="1" fill="currentColor"/>
+          </svg>
+        }
       </div>
     </section>
 

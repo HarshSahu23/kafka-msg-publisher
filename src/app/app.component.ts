@@ -4,6 +4,7 @@ import { FormsModule } from '@angular/forms';
 import { TauriService, KafkaConfig, MessageEntry } from './services/tauri.service';
 import { listen, UnlistenFn } from '@tauri-apps/api/event';
 import { readTextFile } from '@tauri-apps/plugin-fs';
+import { open } from '@tauri-apps/plugin-dialog';
 
 @Component({
   selector: 'app-root',
@@ -207,7 +208,13 @@ export class AppComponent implements OnInit, OnDestroy {
     this.isSending = true;
 
     try {
-      await this.tauriService.sendMessage(this.messageContent);
+      // Wrap send in a timeout to prevent infinite hanging
+      const sendPromise = this.tauriService.sendMessage(this.messageContent);
+      const timeoutPromise = new Promise<never>((_, reject) => 
+        setTimeout(() => reject(new Error('Send timeout: Kafka server unreachable')), 10000)
+      );
+      
+      await Promise.race([sendPromise, timeoutPromise]);
       entry.status = 'success';
       this.messageContent = '';
       // Mark as connected if send succeeds
@@ -218,6 +225,28 @@ export class AppComponent implements OnInit, OnDestroy {
       this.connectionStatus = 'error';
     } finally {
       this.isSending = false;
+    }
+  }
+
+  async attachFile() {
+    try {
+      const selected = await open({
+        multiple: false,
+        filters: [{
+          name: 'Text Files',
+          extensions: ['txt', 'json', 'xml', 'csv', 'log', 'md', 'yaml', 'yml']
+        }, {
+          name: 'All Files',
+          extensions: ['*']
+        }]
+      });
+      
+      if (selected && typeof selected === 'string') {
+        const content = await readTextFile(selected);
+        this.messageContent = content;
+      }
+    } catch (error) {
+      console.error('Failed to read file:', error);
     }
   }
 

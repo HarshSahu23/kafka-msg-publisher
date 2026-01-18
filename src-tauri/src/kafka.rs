@@ -56,9 +56,14 @@ impl KafkaService {
 
     /// Test connection to the Kafka broker with timeout
     pub async fn test_connection(&self, timeout_secs: u64) -> Result<bool, KafkaError> {
-        let config = self.config.lock().await;
+        // Clone broker string and release lock BEFORE async operation
+        // This prevents deadlock if the connection hangs
+        let broker = {
+            let config = self.config.lock().await;
+            config.broker.clone()
+        }; // Lock is released here
         
-        let connect_future = ClientBuilder::new(vec![config.broker.clone()]).build();
+        let connect_future = ClientBuilder::new(vec![broker]).build();
         
         match tokio::time::timeout(
             std::time::Duration::from_secs(timeout_secs),
@@ -70,45 +75,57 @@ impl KafkaService {
         }
     }
 
-    /// Send a message to the configured topic
+    /// Send a message to the configured topic with timeout
     pub async fn send_message(&self, message: String) -> Result<SendResult, KafkaError> {
-        let config = self.config.lock().await;
+        // Clone config values and release lock BEFORE async operations
+        let (broker, topic) = {
+            let config = self.config.lock().await;
+            (config.broker.clone(), config.topic.clone())
+        }; // Lock is released here
         
-        // Build client
-        let client = ClientBuilder::new(vec![config.broker.clone()])
-            .build()
-            .await
-            .map_err(|e| KafkaError::ConnectionFailed(e.to_string()))?;
+        // Wrap entire operation in a 10 second timeout
+        let send_future = async {
+            // Build client
+            let client = ClientBuilder::new(vec![broker])
+                .build()
+                .await
+                .map_err(|e| KafkaError::ConnectionFailed(e.to_string()))?;
 
-        // Get partition client for topic (partition 0)
-        let partition_client = client
-            .partition_client(&config.topic, 0, UnknownTopicHandling::Error)
-            .await
-            .map_err(|e| KafkaError::SendFailed(e.to_string()))?;
+            // Get partition client for topic (partition 0)
+            let partition_client = client
+                .partition_client(&topic, 0, UnknownTopicHandling::Error)
+                .await
+                .map_err(|e| KafkaError::SendFailed(e.to_string()))?;
 
-        // Create record
-        let record = Record {
-            key: None,
-            value: Some(message.into_bytes()),
-            headers: Default::default(),
-            timestamp: Utc::now(),
+            // Create record
+            let record = Record {
+                key: None,
+                value: Some(message.into_bytes()),
+                headers: Default::default(),
+                timestamp: Utc::now(),
+            };
+
+            // Send the record
+            partition_client
+                .produce(vec![record], Compression::NoCompression)
+                .await
+                .map_err(|e| KafkaError::SendFailed(e.to_string()))?;
+
+            let timestamp = SystemTime::now()
+                .duration_since(SystemTime::UNIX_EPOCH)
+                .unwrap()
+                .as_secs();
+
+            Ok(SendResult {
+                success: true,
+                message: "Message sent successfully".to_string(),
+                timestamp,
+            })
         };
 
-        // Send the record
-        partition_client
-            .produce(vec![record], Compression::NoCompression)
-            .await
-            .map_err(|e| KafkaError::SendFailed(e.to_string()))?;
-
-        let timestamp = SystemTime::now()
-            .duration_since(SystemTime::UNIX_EPOCH)
-            .unwrap()
-            .as_secs();
-
-        Ok(SendResult {
-            success: true,
-            message: "Message sent successfully".to_string(),
-            timestamp,
-        })
+        match tokio::time::timeout(std::time::Duration::from_secs(10), send_future).await {
+            Ok(result) => result,
+            Err(_) => Err(KafkaError::ConnectionTimeout(10)),
+        }
     }
 }

@@ -162,6 +162,41 @@
   font-size: 0.75rem;
 }
 
+.message-actions-left {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+}
+
+.attach-btn {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-xs);
+  padding: var(--spacing-xs) var(--spacing-sm);
+  font-size: 0.8rem;
+  color: var(--text-muted);
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.attach-btn:hover {
+  color: var(--accent-primary);
+  background: var(--bg-card);
+  border-color: var(--border-hover);
+}
+
+.attach-btn .icon {
+  width: 14px;
+  height: 14px;
+}
+
+.drop-hint {
+  font-size: 0.75rem;
+}
+
 .send-btn {
   min-width: 140px;
 }
@@ -180,6 +215,32 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
+}
+
+.icon-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.icon-btn:hover {
+  color: var(--error);
+  background: var(--error-bg);
+  border-color: var(--error);
+}
+
+.icon-btn .icon {
+  width: 16px;
+  height: 16px;
 }
 
 .history-empty {

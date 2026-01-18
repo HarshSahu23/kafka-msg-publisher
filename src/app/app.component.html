@@ -116,7 +116,7 @@
     <section class="message-section card">
       <div class="message-header">
         <h2>Message</h2>
-        <span class="drop-hint text-muted">Drop a file to load its content</span>
+        <span class="char-count text-muted">{{ messageContent.length }} characters</span>
       </div>
       <textarea 
         class="textarea message-input"
@@ -125,7 +125,15 @@
         [class.drag-highlight]="isDragOver"
       ></textarea>
       <div class="message-actions">
-        <span class="char-count text-muted">{{ messageContent.length }} characters</span>
+        <div class="message-actions-left">
+          <button class="attach-btn" (click)="attachFile()" title="Attach file">
+            <svg class="icon" viewBox="0 0 24 24" fill="none">
+              <path d="M21.44 11.05L12.25 20.24C11.12 21.37 9.58 22 7.97 22C6.36 22 4.82 21.37 3.69 20.24C2.56 19.11 1.93 17.57 1.93 15.96C1.93 14.35 2.56 12.81 3.69 11.68L12.88 2.49C13.63 1.74 14.64 1.32 15.7 1.32C16.76 1.32 17.77 1.74 18.52 2.49C19.27 3.24 19.69 4.25 19.69 5.31C19.69 6.37 19.27 7.38 18.52 8.13L9.32 17.32C8.95 17.69 8.44 17.90 7.91 17.90C7.38 17.90 6.87 17.69 6.50 17.32C6.13 16.95 5.92 16.44 5.92 15.91C5.92 15.38 6.13 14.87 6.50 14.50L15.70 5.31" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+            Attach
+          </button>
+          <span class="drop-hint text-muted">or drop a file</span>
+        </div>
         <button 
           class="btn btn-primary send-btn" 
           (click)="sendMessage()" 
@@ -150,7 +158,14 @@
       <div class="history-header">
         <h2>History</h2>
         @if (messages.length > 0) {
-          <button class="btn btn-sm" (click)="clearHistory()">Clear</button>
+          <button class="icon-btn" (click)="clearHistory()" title="Clear logs">
+            <svg class="icon" viewBox="0 0 24 24" fill="none">
+              <path d="M3 6H5H21" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+              <path d="M8 6V4C8 3.44772 8.44772 3 9 3H15C15.5523 3 16 3.44772 16 4V6M19 6V20C19 20.5523 18.5523 21 18 21H6C5.44772 21 5 20.5523 5 20V6H19Z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+              <path d="M10 11V17" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+              <path d="M14 11V17" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+            </svg>
+          </button>
         }
       </div>
       @if (messages.length === 0) {

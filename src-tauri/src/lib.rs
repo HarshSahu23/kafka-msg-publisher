@@ -45,14 +45,14 @@ async fn send_kafka_message(
     state: State<'_, AppState>,
     message: String,
 ) -> Result<CommandResult<SendResult>, ()> {
-    let service = state.kafka_service.lock().await;
+    let service = state.kafka_service.lock().await.clone_service();
     Ok(service.send_message(message).await.into())
 }
 
 /// Get the current Kafka configuration
 #[tauri::command]
 async fn get_kafka_config(state: State<'_, AppState>) -> Result<AppConfig, ()> {
-    let service = state.kafka_service.lock().await;
+    let service = state.kafka_service.lock().await.clone_service();
     Ok(service.get_config().await)
 }
 
@@ -63,10 +63,8 @@ async fn save_kafka_config(
     config: AppConfig,
 ) -> Result<CommandResult<()>, ()> {
     // Update runtime config
-    {
-        let service = state.kafka_service.lock().await;
-        service.update_config(config.clone()).await;
-    }
+    let service = state.kafka_service.lock().await.clone_service();
+    service.update_config(config.clone()).await;
     
     // Persist to disk
     Ok(config.save().into())
@@ -78,8 +76,9 @@ async fn test_kafka_connection(
     state: State<'_, AppState>,
     timeout_secs: Option<u64>,
 ) -> Result<CommandResult<bool>, ()> {
-    let service = state.kafka_service.lock().await;
-    let timeout = timeout_secs.unwrap_or(5); // Default 5 second timeout
+    // Clone service ref and release state lock immediately to avoid blocking other commands
+    let service = state.kafka_service.lock().await.clone_service();
+    let timeout = timeout_secs.unwrap_or(10); // Default 10 second timeout
     Ok(service.test_connection(timeout).await.into())
 }
 
@@ -91,7 +90,7 @@ async fn create_kafka_topic(
     num_partitions: Option<i32>,
     replication_factor: Option<i16>,
 ) -> Result<CommandResult<TopicCreateResult>, ()> {
-    let service = state.kafka_service.lock().await;
+    let service = state.kafka_service.lock().await.clone_service();
     let partitions = num_partitions.unwrap_or(1);
     let replication = replication_factor.unwrap_or(1);
     Ok(service.create_topic(topic_name, partitions, replication).await.into())
@@ -105,7 +104,7 @@ async fn consume_kafka_messages(
     offset: Option<i64>,
     max_messages: Option<i32>,
 ) -> Result<CommandResult<Vec<ConsumedMessage>>, ()> {
-    let service = state.kafka_service.lock().await;
+    let service = state.kafka_service.lock().await.clone_service();
     let start_offset = offset.unwrap_or(0);
     let max = max_messages.unwrap_or(50);
     Ok(service.consume_messages(topic, start_offset, max).await.into())

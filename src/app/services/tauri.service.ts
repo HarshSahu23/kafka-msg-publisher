@@ -1,8 +1,24 @@
 import { Injectable } from '@angular/core';
-import { invoke } from '@tauri-apps/api/core';
+
+/** Check if running inside the Tauri webview */
+function isTauri(): boolean {
+  return !!(window as any).__TAURI_INTERNALS__;
+}
+
+/** Wrapper around Tauri invoke that fails gracefully outside Tauri */
+async function tauriInvoke<T>(cmd: string, args?: Record<string, unknown>): Promise<T> {
+  if (!isTauri()) {
+    throw new Error('Not running inside Tauri. Use "npx tauri dev" to launch the app.');
+  }
+  const { invoke } = await import('@tauri-apps/api/core');
+  return invoke<T>(cmd, args);
+}
 
 /** Security protocol options */
 export type SecurityProtocol = 'Plaintext' | 'Ssl' | 'SaslPlaintext' | 'SaslSsl';
+
+/** SASL mechanism options */
+export type SaslMechanism = 'Plain' | 'ScramSha256' | 'ScramSha512';
 
 /** Kafka configuration */
 export interface KafkaConfig {
@@ -10,6 +26,7 @@ export interface KafkaConfig {
   topic: string;
   client_id: string;
   security_protocol: SecurityProtocol;
+  sasl_mechanism: SaslMechanism;
   sasl_username: string;
   sasl_password: string;
   ssl_ca_cert_path: string;
@@ -64,7 +81,7 @@ export class TauriService {
    * Send a message to Kafka
    */
   async sendMessage(message: string): Promise<SendResult> {
-    const result = await invoke<CommandResult<SendResult>>('send_kafka_message', { message });
+    const result = await tauriInvoke<CommandResult<SendResult>>('send_kafka_message', { message });
     
     if (result.type === 'Ok') {
       return result.data as SendResult;
@@ -77,14 +94,14 @@ export class TauriService {
    * Get the current Kafka configuration
    */
   async getConfig(): Promise<KafkaConfig> {
-    return await invoke<KafkaConfig>('get_kafka_config');
+    return await tauriInvoke<KafkaConfig>('get_kafka_config');
   }
 
   /**
    * Save Kafka configuration
    */
   async saveConfig(config: KafkaConfig): Promise<void> {
-    const result = await invoke<CommandResult<void>>('save_kafka_config', { config });
+    const result = await tauriInvoke<CommandResult<void>>('save_kafka_config', { config });
     
     if (result.type === 'Err') {
       throw new Error(result.data as string);
@@ -95,7 +112,7 @@ export class TauriService {
    * Test connection to Kafka broker with timeout
    */
   async testConnection(timeoutSecs: number = 5): Promise<boolean> {
-    const result = await invoke<CommandResult<boolean>>('test_kafka_connection', { timeoutSecs });
+    const result = await tauriInvoke<CommandResult<boolean>>('test_kafka_connection', { timeoutSecs });
     
     if (result.type === 'Ok') {
       return result.data as boolean;
@@ -108,7 +125,7 @@ export class TauriService {
    * Create a new Kafka topic
    */
   async createTopic(topicName: string, numPartitions: number = 1, replicationFactor: number = 1): Promise<TopicCreateResult> {
-    const result = await invoke<CommandResult<TopicCreateResult>>('create_kafka_topic', {
+    const result = await tauriInvoke<CommandResult<TopicCreateResult>>('create_kafka_topic', {
       topicName,
       numPartitions,
       replicationFactor,
@@ -125,7 +142,7 @@ export class TauriService {
    * Consume messages from a Kafka topic
    */
   async consumeMessages(topic: string, offset: number = 0, maxMessages: number = 50): Promise<ConsumedMessage[]> {
-    const result = await invoke<CommandResult<ConsumedMessage[]>>('consume_kafka_messages', {
+    const result = await tauriInvoke<CommandResult<ConsumedMessage[]>>('consume_kafka_messages', {
       topic,
       offset,
       maxMessages,

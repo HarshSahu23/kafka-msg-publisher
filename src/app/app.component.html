@@ -86,6 +86,14 @@
             </div>
 
             @if (config.security_protocol === 'SaslPlaintext' || config.security_protocol === 'SaslSsl') {
+              <div class="form-group">
+                <label for="saslMechanism">SASL Mechanism</label>
+                <select id="saslMechanism" class="input" [(ngModel)]="config.sasl_mechanism">
+                  <option value="Plain">PLAIN</option>
+                  <option value="ScramSha256">SCRAM-SHA-256</option>
+                  <option value="ScramSha512">SCRAM-SHA-512</option>
+                </select>
+              </div>
               <div class="settings-grid">
                 <div class="form-group">
                   <label for="saslUsername">SASL Username</label>

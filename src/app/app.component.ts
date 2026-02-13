@@ -2,9 +2,13 @@ import { Component, OnInit, HostListener, OnDestroy } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { TauriService, KafkaConfig, MessageEntry, ConsumedMessage } from './services/tauri.service';
-import { listen, UnlistenFn } from '@tauri-apps/api/event';
-import { readTextFile } from '@tauri-apps/plugin-fs';
-import { open } from '@tauri-apps/plugin-dialog';
+
+/** Check if running inside the Tauri webview */
+function isTauri(): boolean {
+  return !!(window as any).__TAURI_INTERNALS__;
+}
+
+type UnlistenFn = () => void;
 
 @Component({
   selector: 'app-root',
@@ -20,6 +24,7 @@ export class AppComponent implements OnInit, OnDestroy {
     topic: 'test-topic',
     client_id: 'kafka-msg-publisher',
     security_protocol: 'Plaintext',
+    sasl_mechanism: 'Plain',
     sasl_username: '',
     sasl_password: '',
     ssl_ca_cert_path: '',
@@ -105,7 +110,11 @@ export class AppComponent implements OnInit, OnDestroy {
   }
 
   async setupFileDropListener() {
+    if (!isTauri()) return;
     try {
+      const { listen } = await import('@tauri-apps/api/event');
+      const { readTextFile } = await import('@tauri-apps/plugin-fs');
+
       // Listen for Tauri's native file drop events
       this.unlistenFileDrop = await listen<{ paths: string[] }>('tauri://drag-drop', async (event) => {
         const paths = event.payload.paths;
@@ -160,7 +169,7 @@ export class AppComponent implements OnInit, OnDestroy {
     let result: 'connected' | 'error' = 'error';
     
     try {
-      await this.tauriService.testConnection(3);
+      await this.tauriService.testConnection(10);
       result = 'connected';
     } catch (error) {
       result = 'error';
@@ -187,7 +196,7 @@ export class AppComponent implements OnInit, OnDestroy {
     let result: 'connected' | 'error' = 'error';
     
     try {
-      await this.tauriService.testConnection(3); // 3 second timeout
+      await this.tauriService.testConnection(10); // 10 second timeout for remote/SASL brokers
       if (!this.testingCancelled) {
         result = 'connected';
       }
@@ -259,7 +268,11 @@ export class AppComponent implements OnInit, OnDestroy {
   }
 
   async attachFile() {
+    if (!isTauri()) return;
     try {
+      const { open } = await import('@tauri-apps/plugin-dialog');
+      const { readTextFile } = await import('@tauri-apps/plugin-fs');
+
       const selected = await open({
         multiple: false,
         filters: [{
@@ -281,7 +294,10 @@ export class AppComponent implements OnInit, OnDestroy {
   }
 
   async browseCertFile(field: 'ssl_ca_cert_path' | 'ssl_client_cert_path' | 'ssl_client_key_path') {
+    if (!isTauri()) return;
     try {
+      const { open } = await import('@tauri-apps/plugin-dialog');
+
       const selected = await open({
         multiple: false,
         filters: [{

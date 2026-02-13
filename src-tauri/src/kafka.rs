@@ -1,14 +1,15 @@
-use rskafka::client::partition::{Compression, UnknownTopicHandling};
-use rskafka::client::{ClientBuilder, SaslConfig};
+use rskafka::client::partition::{Compression, OffsetAt, UnknownTopicHandling};
+use rskafka::client::{ClientBuilder, Credentials, SaslConfig};
 use rskafka::record::Record;
 use chrono::Utc;
+use rustls::pki_types::{CertificateDer, PrivateKeyDer, ServerName};
 use serde::Serialize;
 use std::io::BufReader;
 use std::sync::Arc;
 use std::time::SystemTime;
 use tokio::sync::Mutex;
 
-use crate::config::{AppConfig, SecurityProtocol};
+use crate::config::{AppConfig, SaslMechanism, SecurityProtocol};
 
 /// Result of a message send operation
 #[derive(Debug, Clone, Serialize)]
@@ -58,23 +59,48 @@ pub enum KafkaError {
 }
 
 /// Custom certificate verifier that skips verification (insecure, for testing only)
+#[derive(Debug)]
 struct NoVerifier;
 
-impl rustls::client::ServerCertVerifier for NoVerifier {
+impl rustls::client::danger::ServerCertVerifier for NoVerifier {
     fn verify_server_cert(
         &self,
-        _end_entity: &rustls::Certificate,
-        _intermediates: &[rustls::Certificate],
-        _server_name: &rustls::ServerName,
-        _scts: &mut dyn Iterator<Item = &[u8]>,
+        _end_entity: &CertificateDer<'_>,
+        _intermediates: &[CertificateDer<'_>],
+        _server_name: &ServerName<'_>,
         _ocsp_response: &[u8],
-        _now: std::time::SystemTime,
-    ) -> Result<rustls::client::ServerCertVerified, rustls::Error> {
-        Ok(rustls::client::ServerCertVerified::assertion())
+        _now: rustls::pki_types::UnixTime,
+    ) -> Result<rustls::client::danger::ServerCertVerified, rustls::Error> {
+        Ok(rustls::client::danger::ServerCertVerified::assertion())
+    }
+
+    fn verify_tls12_signature(
+        &self,
+        _message: &[u8],
+        _cert: &CertificateDer<'_>,
+        _dss: &rustls::DigitallySignedStruct,
+    ) -> Result<rustls::client::danger::HandshakeSignatureValid, rustls::Error> {
+        Ok(rustls::client::danger::HandshakeSignatureValid::assertion())
+    }
+
+    fn verify_tls13_signature(
+        &self,
+        _message: &[u8],
+        _cert: &CertificateDer<'_>,
+        _dss: &rustls::DigitallySignedStruct,
+    ) -> Result<rustls::client::danger::HandshakeSignatureValid, rustls::Error> {
+        Ok(rustls::client::danger::HandshakeSignatureValid::assertion())
+    }
+
+    fn supported_verify_schemes(&self) -> Vec<rustls::SignatureScheme> {
+        rustls::crypto::ring::default_provider()
+            .signature_verification_algorithms
+            .supported_schemes()
     }
 }
 
 /// Kafka service for managing connections and sending messages
+#[derive(Clone)]
 pub struct KafkaService {
     config: Arc<Mutex<AppConfig>>,
 }
@@ -84,6 +110,11 @@ impl KafkaService {
         Self {
             config: Arc::new(Mutex::new(config)),
         }
+    }
+
+    /// Clone the service handle (shares the same config via Arc)
+    pub fn clone_service(&self) -> Self {
+        self.clone()
     }
 
     pub async fn update_config(&self, config: AppConfig) {
@@ -97,7 +128,16 @@ impl KafkaService {
 
     /// Build a configured ClientBuilder with TLS and SASL based on security settings
     fn build_client_builder(config: &AppConfig) -> Result<ClientBuilder, KafkaError> {
-        let mut builder = ClientBuilder::new(vec![config.broker.clone()]);
+        // Support comma-separated broker addresses
+        let brokers: Vec<String> = config.broker
+            .split(',')
+            .map(|s| s.trim().to_string())
+            .filter(|s| !s.is_empty())
+            .collect();
+        if brokers.is_empty() {
+            return Err(KafkaError::InvalidConfig("No broker addresses provided".to_string()));
+        }
+        let mut builder = ClientBuilder::new(brokers);
 
         // Configure TLS if needed
         match config.security_protocol {
@@ -116,10 +156,16 @@ impl KafkaService {
                         "SASL username is required".to_string(),
                     ));
                 }
-                builder = builder.sasl_config(SaslConfig::Plain {
-                    username: config.sasl_username.clone(),
-                    password: config.sasl_password.clone(),
-                });
+                let credentials = Credentials::new(
+                    config.sasl_username.clone(),
+                    config.sasl_password.clone(),
+                );
+                let sasl = match config.sasl_mechanism {
+                    SaslMechanism::Plain => SaslConfig::Plain(credentials),
+                    SaslMechanism::ScramSha256 => SaslConfig::ScramSha256(credentials),
+                    SaslMechanism::ScramSha512 => SaslConfig::ScramSha512(credentials),
+                };
+                builder = builder.sasl_config(sasl);
             }
             _ => {}
         }
@@ -129,10 +175,13 @@ impl KafkaService {
 
     /// Build TLS configuration from AppConfig
     fn build_tls_config(config: &AppConfig) -> Result<rustls::ClientConfig, KafkaError> {
+        // Ensure ring crypto provider is installed
+        let _ = rustls::crypto::ring::default_provider().install_default();
+
         // Skip verification mode (insecure, for testing)
         if config.ssl_skip_verification {
             let tls_config = rustls::ClientConfig::builder()
-                .with_safe_defaults()
+                .dangerous()
                 .with_custom_certificate_verifier(Arc::new(NoVerifier))
                 .with_no_client_auth();
             return Ok(tls_config);
@@ -145,24 +194,23 @@ impl KafkaService {
             let ca_data = std::fs::read(&config.ssl_ca_cert_path)
                 .map_err(|e| KafkaError::InvalidConfig(format!("Failed to read CA cert: {}", e)))?;
             let mut reader = BufReader::new(ca_data.as_slice());
-            let certs = rustls_pemfile::certs(&mut reader)
-                .map_err(|e| KafkaError::InvalidConfig(format!("Failed to parse CA cert: {}", e)))?;
+            let certs: Vec<CertificateDer<'static>> = rustls_pemfile::certs(&mut reader)
+                .filter_map(|r| r.ok())
+                .collect();
             for cert in certs {
                 root_cert_store
-                    .add(&rustls::Certificate(cert))
+                    .add(cert)
                     .map_err(|e| KafkaError::InvalidConfig(format!("Failed to add CA cert: {}", e)))?;
             }
         } else {
             // Use system native root certificates
-            let native_certs = rustls_native_certs::load_native_certs()
-                .map_err(|e| KafkaError::InvalidConfig(format!("Failed to load system certs: {}", e)))?;
-            for cert in native_certs {
-                let _ = root_cert_store.add(&rustls::Certificate(cert.0));
+            let native_certs = rustls_native_certs::load_native_certs();
+            for cert in native_certs.certs {
+                let _ = root_cert_store.add(cert);
             }
         }
 
         let builder = rustls::ClientConfig::builder()
-            .with_safe_defaults()
             .with_root_certificates(root_cert_store);
 
         // Add client certificate (mTLS) if provided
@@ -173,27 +221,24 @@ impl KafkaService {
                 KafkaError::InvalidConfig(format!("Failed to read client cert: {}", e))
             })?;
             let mut cert_reader = BufReader::new(cert_data.as_slice());
-            let certs: Vec<rustls::Certificate> = rustls_pemfile::certs(&mut cert_reader)
-                .map_err(|e| {
-                    KafkaError::InvalidConfig(format!("Failed to parse client cert: {}", e))
-                })?
-                .into_iter()
-                .map(rustls::Certificate)
+            let certs: Vec<CertificateDer<'static>> = rustls_pemfile::certs(&mut cert_reader)
+                .filter_map(|r| r.ok())
                 .collect();
 
             let key_data = std::fs::read(&config.ssl_client_key_path).map_err(|e| {
                 KafkaError::InvalidConfig(format!("Failed to read client key: {}", e))
             })?;
             let mut key_reader = BufReader::new(key_data.as_slice());
-            let keys = rustls_pemfile::pkcs8_private_keys(&mut key_reader).map_err(|e| {
-                KafkaError::InvalidConfig(format!("Failed to parse client key: {}", e))
-            })?;
-            let key = keys.into_iter().next().ok_or_else(|| {
-                KafkaError::InvalidConfig("No private key found in key file".to_string())
-            })?;
+            let key: PrivateKeyDer<'static> = rustls_pemfile::private_key(&mut key_reader)
+                .map_err(|e| {
+                    KafkaError::InvalidConfig(format!("Failed to parse client key: {}", e))
+                })?
+                .ok_or_else(|| {
+                    KafkaError::InvalidConfig("No private key found in key file".to_string())
+                })?;
 
             builder
-                .with_client_auth_cert(certs, rustls::PrivateKey(key))
+                .with_client_auth_cert(certs, key)
                 .map_err(|e| {
                     KafkaError::InvalidConfig(format!("Failed to configure client auth: {}", e))
                 })?
@@ -351,9 +396,34 @@ impl KafkaService {
                 .await
                 .map_err(|e| KafkaError::ConsumeFailed(e.to_string()))?;
 
+            // Query the actual available offset range
+            let earliest = partition_client
+                .get_offset(OffsetAt::Earliest)
+                .await
+                .map_err(|e| KafkaError::ConsumeFailed(format!("Failed to get earliest offset: {}", e)))?;
+            let latest = partition_client
+                .get_offset(OffsetAt::Latest)
+                .await
+                .map_err(|e| KafkaError::ConsumeFailed(format!("Failed to get latest offset: {}", e)))?;
+
+            // If partition is empty (no messages), return empty
+            if earliest >= latest {
+                return Ok(vec![]);
+            }
+
+            // Clamp the requested offset to the valid range
+            let effective_offset = if offset < earliest {
+                earliest
+            } else if offset >= latest {
+                // No messages at or after this offset
+                return Ok(vec![]);
+            } else {
+                offset
+            };
+
             let (records, _high_watermark) = partition_client
                 .fetch_records(
-                    offset,
+                    effective_offset,
                     1..1_048_576, // 1 byte to 1 MB
                     5_000,        // 5 second max wait
                 )

@@ -17,6 +17,20 @@ impl Default for SecurityProtocol {
     }
 }
 
+/// SASL authentication mechanism
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub enum SaslMechanism {
+    Plain,
+    ScramSha256,
+    ScramSha512,
+}
+
+impl Default for SaslMechanism {
+    fn default() -> Self {
+        Self::Plain
+    }
+}
+
 /// Application configuration for Kafka connection
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AppConfig {
@@ -25,6 +39,8 @@ pub struct AppConfig {
     pub client_id: String,
     #[serde(default)]
     pub security_protocol: SecurityProtocol,
+    #[serde(default)]
+    pub sasl_mechanism: SaslMechanism,
     #[serde(default)]
     pub sasl_username: String,
     #[serde(default)]
@@ -46,6 +62,7 @@ impl Default for AppConfig {
             topic: "test-topic".to_string(),
             client_id: "kafka-msg-publisher".to_string(),
             security_protocol: SecurityProtocol::default(),
+            sasl_mechanism: SaslMechanism::default(),
             sasl_username: String::new(),
             sasl_password: String::new(),
             ssl_ca_cert_path: String::new(),

@@ -40,6 +40,5 @@ testem.log
 # System files
 .DS_Store
 Thumbs.db
-package-lock.json
 .vscode/extensions.json
 src-tauri/Cargo.lock

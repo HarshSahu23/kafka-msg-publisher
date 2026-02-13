@@ -1,7 +1,7 @@
 import { Component, OnInit, HostListener, OnDestroy } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
-import { TauriService, KafkaConfig, MessageEntry } from './services/tauri.service';
+import { TauriService, KafkaConfig, MessageEntry, ConsumedMessage } from './services/tauri.service';
 import { listen, UnlistenFn } from '@tauri-apps/api/event';
 import { readTextFile } from '@tauri-apps/plugin-fs';
 import { open } from '@tauri-apps/plugin-dialog';
@@ -18,7 +18,14 @@ export class AppComponent implements OnInit, OnDestroy {
   config: KafkaConfig = {
     broker: 'localhost:9092',
     topic: 'test-topic',
-    client_id: 'kafka-msg-publisher'
+    client_id: 'kafka-msg-publisher',
+    security_protocol: 'Plaintext',
+    sasl_username: '',
+    sasl_password: '',
+    ssl_ca_cert_path: '',
+    ssl_client_cert_path: '',
+    ssl_client_key_path: '',
+    ssl_skip_verification: false
   };
 
   // Message input
@@ -38,6 +45,29 @@ export class AppComponent implements OnInit, OnDestroy {
   
   // Theme
   isDarkMode = true;
+  showSecuritySettings = false;
+
+  // Create Topic
+  showCreateTopic = false;
+  newTopicName = '';
+  newTopicPartitions = 1;
+  newTopicReplication = 1;
+  isCreatingTopic = false;
+  topicCreateStatus: 'none' | 'success' | 'error' = 'none';
+  topicCreateMessage = '';
+
+  // Consumer / Message Viewer
+  showConsumer = false;
+  consumeTopic = '';
+  consumeOffset = 0;
+  consumeMaxMessages = 50;
+  isConsuming = false;
+  consumedMessages: ConsumedMessage[] = [];
+  consumeError = '';
+
+  // Message Detail Modal
+  selectedMessage: ConsumedMessage | null = null;
+  copiedField: string | null = null;
 
   // Tauri event listener
   private unlistenFileDrop: UnlistenFn | null = null;
@@ -247,6 +277,120 @@ export class AppComponent implements OnInit, OnDestroy {
       }
     } catch (error) {
       console.error('Failed to read file:', error);
+    }
+  }
+
+  async browseCertFile(field: 'ssl_ca_cert_path' | 'ssl_client_cert_path' | 'ssl_client_key_path') {
+    try {
+      const selected = await open({
+        multiple: false,
+        filters: [{
+          name: 'Certificate Files',
+          extensions: ['pem', 'crt', 'cert', 'key', 'p12']
+        }, {
+          name: 'All Files',
+          extensions: ['*']
+        }]
+      });
+
+      if (selected && typeof selected === 'string') {
+        this.config[field] = selected;
+      }
+    } catch (error) {
+      console.error('Failed to select certificate file:', error);
+    }
+  }
+
+  getSecurityLabel(): string {
+    switch (this.config.security_protocol) {
+      case 'Ssl': return 'SSL';
+      case 'SaslPlaintext': return 'SASL';
+      case 'SaslSsl': return 'SASL+SSL';
+      default: return 'PLAIN';
+    }
+  }
+
+  // --- Create Topic ---
+  async createTopic() {
+    if (!this.newTopicName.trim() || this.isCreatingTopic) return;
+
+    this.isCreatingTopic = true;
+    this.topicCreateStatus = 'none';
+    this.topicCreateMessage = '';
+
+    try {
+      const result = await this.tauriService.createTopic(
+        this.newTopicName.trim(),
+        this.newTopicPartitions,
+        this.newTopicReplication
+      );
+      this.topicCreateStatus = 'success';
+      this.topicCreateMessage = result.message;
+      this.newTopicName = '';
+    } catch (error: any) {
+      this.topicCreateStatus = 'error';
+      this.topicCreateMessage = error.message || 'Failed to create topic';
+    } finally {
+      this.isCreatingTopic = false;
+    }
+  }
+
+  // --- Consume Messages ---
+  async fetchMessages() {
+    if (this.isConsuming) return;
+
+    const topic = this.consumeTopic.trim() || this.config.topic;
+    this.isConsuming = true;
+    this.consumeError = '';
+
+    try {
+      this.consumedMessages = await this.tauriService.consumeMessages(
+        topic,
+        this.consumeOffset,
+        this.consumeMaxMessages
+      );
+      if (this.consumedMessages.length === 0) {
+        this.consumeError = 'No messages found at the specified offset.';
+      }
+    } catch (error: any) {
+      this.consumeError = error.message || 'Failed to consume messages';
+      this.consumedMessages = [];
+    } finally {
+      this.isConsuming = false;
+    }
+  }
+
+  formatMessageTimestamp(timestampMs: number): string {
+    return new Date(timestampMs).toLocaleString('en-US', {
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+      month: 'short',
+      day: 'numeric',
+    });
+  }
+
+  // --- Message Detail Modal ---
+  openMessageDetail(msg: ConsumedMessage) {
+    this.selectedMessage = msg;
+    this.copiedField = null;
+  }
+
+  closeMessageDetail() {
+    this.selectedMessage = null;
+    this.copiedField = null;
+  }
+
+  async copyToClipboard(text: string | null, field: string) {
+    if (!text) return;
+    try {
+      await navigator.clipboard.writeText(text);
+      this.copiedField = field;
+      setTimeout(() => {
+        if (this.copiedField === field) this.copiedField = null;
+      }, 2000);
+    } catch {
+      console.error('Failed to copy to clipboard');
     }
   }
 

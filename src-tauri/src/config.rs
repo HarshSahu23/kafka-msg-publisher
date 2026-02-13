@@ -2,12 +2,41 @@ use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::PathBuf;
 
+/// Security protocol for Kafka connection
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub enum SecurityProtocol {
+    Plaintext,
+    Ssl,
+    SaslPlaintext,
+    SaslSsl,
+}
+
+impl Default for SecurityProtocol {
+    fn default() -> Self {
+        Self::Plaintext
+    }
+}
+
 /// Application configuration for Kafka connection
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AppConfig {
     pub broker: String,
     pub topic: String,
     pub client_id: String,
+    #[serde(default)]
+    pub security_protocol: SecurityProtocol,
+    #[serde(default)]
+    pub sasl_username: String,
+    #[serde(default)]
+    pub sasl_password: String,
+    #[serde(default)]
+    pub ssl_ca_cert_path: String,
+    #[serde(default)]
+    pub ssl_client_cert_path: String,
+    #[serde(default)]
+    pub ssl_client_key_path: String,
+    #[serde(default)]
+    pub ssl_skip_verification: bool,
 }
 
 impl Default for AppConfig {
@@ -16,6 +45,13 @@ impl Default for AppConfig {
             broker: "localhost:9092".to_string(),
             topic: "test-topic".to_string(),
             client_id: "kafka-msg-publisher".to_string(),
+            security_protocol: SecurityProtocol::default(),
+            sasl_username: String::new(),
+            sasl_password: String::new(),
+            ssl_ca_cert_path: String::new(),
+            ssl_client_cert_path: String::new(),
+            ssl_client_key_path: String::new(),
+            ssl_skip_verification: false,
         }
     }
 }

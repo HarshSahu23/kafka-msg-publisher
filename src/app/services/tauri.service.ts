@@ -1,11 +1,21 @@
 import { Injectable } from '@angular/core';
 import { invoke } from '@tauri-apps/api/core';
 
+/** Security protocol options */
+export type SecurityProtocol = 'Plaintext' | 'Ssl' | 'SaslPlaintext' | 'SaslSsl';
+
 /** Kafka configuration */
 export interface KafkaConfig {
   broker: string;
   topic: string;
   client_id: string;
+  security_protocol: SecurityProtocol;
+  sasl_username: string;
+  sasl_password: string;
+  ssl_ca_cert_path: string;
+  ssl_client_cert_path: string;
+  ssl_client_key_path: string;
+  ssl_skip_verification: boolean;
 }
 
 /** Result of a message send operation */
@@ -28,6 +38,21 @@ export interface MessageEntry {
   timestamp: Date;
   status: 'pending' | 'success' | 'error';
   errorMessage?: string;
+}
+
+/** Result of topic creation */
+export interface TopicCreateResult {
+  success: boolean;
+  message: string;
+  topic: string;
+}
+
+/** A consumed message from Kafka */
+export interface ConsumedMessage {
+  offset: number;
+  key: string | null;
+  value: string | null;
+  timestamp: number;
 }
 
 @Injectable({
@@ -74,6 +99,40 @@ export class TauriService {
     
     if (result.type === 'Ok') {
       return result.data as boolean;
+    } else {
+      throw new Error(result.data as string);
+    }
+  }
+
+  /**
+   * Create a new Kafka topic
+   */
+  async createTopic(topicName: string, numPartitions: number = 1, replicationFactor: number = 1): Promise<TopicCreateResult> {
+    const result = await invoke<CommandResult<TopicCreateResult>>('create_kafka_topic', {
+      topicName,
+      numPartitions,
+      replicationFactor,
+    });
+
+    if (result.type === 'Ok') {
+      return result.data as TopicCreateResult;
+    } else {
+      throw new Error(result.data as string);
+    }
+  }
+
+  /**
+   * Consume messages from a Kafka topic
+   */
+  async consumeMessages(topic: string, offset: number = 0, maxMessages: number = 50): Promise<ConsumedMessage[]> {
+    const result = await invoke<CommandResult<ConsumedMessage[]>>('consume_kafka_messages', {
+      topic,
+      offset,
+      maxMessages,
+    });
+
+    if (result.type === 'Ok') {
+      return result.data as ConsumedMessage[];
     } else {
       throw new Error(result.data as string);
     }

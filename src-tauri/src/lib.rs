@@ -2,7 +2,7 @@ mod config;
 mod kafka;
 
 use config::{AppConfig, ConfigError};
-use kafka::{KafkaError, KafkaService, SendResult};
+use kafka::{KafkaError, KafkaService, SendResult, TopicCreateResult, ConsumedMessage};
 use serde::Serialize;
 use std::sync::Arc;
 use tauri::State;
@@ -83,6 +83,34 @@ async fn test_kafka_connection(
     Ok(service.test_connection(timeout).await.into())
 }
 
+/// Create a new Kafka topic
+#[tauri::command]
+async fn create_kafka_topic(
+    state: State<'_, AppState>,
+    topic_name: String,
+    num_partitions: Option<i32>,
+    replication_factor: Option<i16>,
+) -> Result<CommandResult<TopicCreateResult>, ()> {
+    let service = state.kafka_service.lock().await;
+    let partitions = num_partitions.unwrap_or(1);
+    let replication = replication_factor.unwrap_or(1);
+    Ok(service.create_topic(topic_name, partitions, replication).await.into())
+}
+
+/// Consume messages from a Kafka topic
+#[tauri::command]
+async fn consume_kafka_messages(
+    state: State<'_, AppState>,
+    topic: String,
+    offset: Option<i64>,
+    max_messages: Option<i32>,
+) -> Result<CommandResult<Vec<ConsumedMessage>>, ()> {
+    let service = state.kafka_service.lock().await;
+    let start_offset = offset.unwrap_or(0);
+    let max = max_messages.unwrap_or(50);
+    Ok(service.consume_messages(topic, start_offset, max).await.into())
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     // Load config and create Kafka service
@@ -101,6 +129,8 @@ pub fn run() {
             get_kafka_config,
             save_kafka_config,
             test_kafka_connection,
+            create_kafka_topic,
+            consume_kafka_messages,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

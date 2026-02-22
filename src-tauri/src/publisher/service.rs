@@ -264,3 +264,63 @@ impl KafkaService {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::config::{AppConfig, SecurityProtocol};
+
+    fn test_config() -> AppConfig {
+        AppConfig {
+            broker: "localhost:9092".to_string(),
+            topic: "test-topic".to_string(),
+            client_id: "test-client".to_string(),
+            security_protocol: SecurityProtocol::Plaintext,
+            ..AppConfig::default()
+        }
+    }
+
+    #[tokio::test]
+    async fn new_service_stores_config() {
+        let config = test_config();
+        let service = KafkaService::new(config.clone());
+        let stored = service.get_config().await;
+        assert_eq!(stored.broker, "localhost:9092");
+        assert_eq!(stored.topic, "test-topic");
+        assert_eq!(stored.client_id, "test-client");
+    }
+
+    #[tokio::test]
+    async fn update_config_replaces_config() {
+        let service = KafkaService::new(test_config());
+
+        let new_config = AppConfig {
+            broker: "broker2:9093".to_string(),
+            topic: "new-topic".to_string(),
+            ..AppConfig::default()
+        };
+        service.update_config(new_config).await;
+
+        let stored = service.get_config().await;
+        assert_eq!(stored.broker, "broker2:9093");
+        assert_eq!(stored.topic, "new-topic");
+    }
+
+    #[tokio::test]
+    async fn clone_service_shares_config_arc() {
+        // Cloning the service should give a handle to the same underlying Arc,
+        // so updates on one are visible on the other.
+        let service = KafkaService::new(test_config());
+        let cloned = service.clone_service();
+
+        let updated = AppConfig {
+            broker: "shared-broker:9094".to_string(),
+            ..AppConfig::default()
+        };
+        service.update_config(updated).await;
+
+        // The cloned handle should see the update made via the original
+        let via_clone = cloned.get_config().await;
+        assert_eq!(via_clone.broker, "shared-broker:9094");
+    }
+}

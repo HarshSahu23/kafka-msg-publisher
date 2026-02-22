@@ -175,3 +175,118 @@ pub fn build_tls_config(config: &AppConfig) -> Result<rustls::ClientConfig, Kafk
 
     Ok(tls_config)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::config::{AppConfig, SaslMechanism, SecurityProtocol};
+
+    fn plaintext_config() -> AppConfig {
+        AppConfig {
+            broker: "localhost:9092".to_string(),
+            security_protocol: SecurityProtocol::Plaintext,
+            ..AppConfig::default()
+        }
+    }
+
+    // --- build_client_builder ---
+
+    #[test]
+    fn plaintext_config_builds_ok() {
+        // A minimal plaintext config should build a ClientBuilder without error.
+        // We don't call .build() — that would require a live broker.
+        let config = plaintext_config();
+        let result = build_client_builder(&config);
+        assert!(result.is_ok(), "Expected Ok, got: {:?}", result.err());
+    }
+
+    #[test]
+    fn multi_broker_config_builds_ok() {
+        let config = AppConfig {
+            broker: "broker1:9092, broker2:9092".to_string(),
+            security_protocol: SecurityProtocol::Plaintext,
+            ..AppConfig::default()
+        };
+        assert!(build_client_builder(&config).is_ok());
+    }
+
+    #[test]
+    fn empty_broker_returns_invalid_config() {
+        let config = AppConfig {
+            broker: "".to_string(),
+            ..AppConfig::default()
+        };
+        let err = build_client_builder(&config).unwrap_err();
+        assert!(
+            matches!(err, KafkaError::InvalidConfig(_)),
+            "Expected InvalidConfig, got: {:?}",
+            err
+        );
+    }
+
+    #[test]
+    fn whitespace_only_broker_returns_invalid_config() {
+        let config = AppConfig {
+            broker: "  ,  ".to_string(),
+            ..AppConfig::default()
+        };
+        let err = build_client_builder(&config).unwrap_err();
+        assert!(matches!(err, KafkaError::InvalidConfig(_)));
+    }
+
+    #[test]
+    fn sasl_plaintext_with_empty_username_returns_error() {
+        let config = AppConfig {
+            broker: "localhost:9092".to_string(),
+            security_protocol: SecurityProtocol::SaslPlaintext,
+            sasl_mechanism: SaslMechanism::Plain,
+            sasl_username: "".to_string(),
+            sasl_password: "secret".to_string(),
+            ..AppConfig::default()
+        };
+        let err = build_client_builder(&config).unwrap_err();
+        assert!(matches!(err, KafkaError::InvalidConfig(_)));
+    }
+
+    #[test]
+    fn sasl_with_credentials_builds_ok() {
+        let config = AppConfig {
+            broker: "localhost:9092".to_string(),
+            security_protocol: SecurityProtocol::SaslPlaintext,
+            sasl_mechanism: SaslMechanism::Plain,
+            sasl_username: "user".to_string(),
+            sasl_password: "pass".to_string(),
+            ..AppConfig::default()
+        };
+        assert!(build_client_builder(&config).is_ok());
+    }
+
+    // --- build_tls_config ---
+
+    #[test]
+    fn tls_skip_verify_builds_ok() {
+        // Should succeed without any cert files at all
+        let config = AppConfig {
+            ssl_skip_verification: true,
+            security_protocol: SecurityProtocol::Ssl,
+            ..AppConfig::default()
+        };
+        let result = build_tls_config(&config);
+        assert!(result.is_ok(), "Expected Ok for skip-verify mode, got: {:?}", result.err());
+    }
+
+    #[test]
+    fn tls_with_nonexistent_ca_cert_returns_error() {
+        let config = AppConfig {
+            ssl_skip_verification: false,
+            ssl_ca_cert_path: "/nonexistent/path/to/ca.pem".to_string(),
+            security_protocol: SecurityProtocol::Ssl,
+            ..AppConfig::default()
+        };
+        let err = build_tls_config(&config).unwrap_err();
+        assert!(
+            matches!(err, KafkaError::InvalidConfig(_)),
+            "Expected InvalidConfig for missing CA cert file"
+        );
+    }
+}

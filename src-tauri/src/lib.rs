@@ -136,3 +136,59 @@ pub fn run() {
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::config::ConfigError;
+    use crate::connection::KafkaError;
+
+    // --- CommandResult from KafkaError ---
+
+    #[test]
+    fn command_result_ok_from_kafka_ok() {
+        let result: Result<i32, KafkaError> = Ok(42);
+        let wrapped: CommandResult<i32> = result.into();
+        assert!(matches!(wrapped, CommandResult::Ok(42)));
+    }
+
+    #[test]
+    fn command_result_err_from_kafka_err() {
+        let result: Result<i32, KafkaError> =
+            Err(KafkaError::ConnectionFailed("refused".to_string()));
+        let wrapped: CommandResult<i32> = result.into();
+        match wrapped {
+            CommandResult::Err(msg) => assert!(msg.contains("refused")),
+            _ => panic!("Expected CommandResult::Err"),
+        }
+    }
+
+    #[test]
+    fn command_result_timeout_message_contains_seconds() {
+        let result: Result<bool, KafkaError> = Err(KafkaError::ConnectionTimeout(10));
+        let wrapped: CommandResult<bool> = result.into();
+        match wrapped {
+            CommandResult::Err(msg) => assert!(msg.contains("10")),
+            _ => panic!("Expected CommandResult::Err"),
+        }
+    }
+
+    // --- CommandResult from ConfigError ---
+
+    #[test]
+    fn command_result_ok_from_config_ok() {
+        let result: Result<(), ConfigError> = Ok(());
+        let wrapped: CommandResult<()> = result.into();
+        assert!(matches!(wrapped, CommandResult::Ok(())));
+    }
+
+    #[test]
+    fn command_result_err_from_config_err() {
+        let result: Result<(), ConfigError> = Err(ConfigError::NoConfigDir);
+        let wrapped: CommandResult<()> = result.into();
+        match wrapped {
+            CommandResult::Err(msg) => assert!(!msg.is_empty()),
+            _ => panic!("Expected CommandResult::Err"),
+        }
+    }
+}

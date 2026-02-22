@@ -1,14 +1,16 @@
 mod config;
-mod kafka;
+mod connection;
+mod publisher;
 
 use config::{AppConfig, ConfigError};
-use kafka::{KafkaError, KafkaService, SendResult, TopicCreateResult, ConsumedMessage};
+use connection::KafkaError;
+use publisher::{ConsumedMessage, KafkaService, SendResult, TopicCreateResult};
 use serde::Serialize;
 use std::sync::Arc;
 use tauri::State;
 use tokio::sync::Mutex;
 
-/// Application state holding the Kafka service
+/// Application state holding the Kafka publisher service
 pub struct AppState {
     kafka_service: Arc<Mutex<KafkaService>>,
 }
@@ -65,7 +67,7 @@ async fn save_kafka_config(
     // Update runtime config
     let service = state.kafka_service.lock().await.clone_service();
     service.update_config(config.clone()).await;
-    
+
     // Persist to disk
     Ok(config.save().into())
 }
@@ -78,7 +80,7 @@ async fn test_kafka_connection(
 ) -> Result<CommandResult<bool>, ()> {
     // Clone service ref and release state lock immediately to avoid blocking other commands
     let service = state.kafka_service.lock().await.clone_service();
-    let timeout = timeout_secs.unwrap_or(10); // Default 10 second timeout
+    let timeout = timeout_secs.unwrap_or(10);
     Ok(service.test_connection(timeout).await.into())
 }
 
@@ -115,7 +117,7 @@ pub fn run() {
     // Load config and create Kafka service
     let config = AppConfig::load();
     let kafka_service = Arc::new(Mutex::new(KafkaService::new(config)));
-    
+
     let app_state = AppState { kafka_service };
 
     tauri::Builder::default()

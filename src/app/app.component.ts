@@ -9,6 +9,7 @@ import { RouterOutlet, RouterLink, RouterLinkActive } from '@angular/router';
   styleUrl: './app.component.css',
 })
 export class AppComponent implements OnInit {
+  isDarkMode = true;
   isDrawerCollapsed = false;
 
   ngOnInit() {
@@ -18,7 +19,17 @@ export class AppComponent implements OnInit {
 
     // Apply saved theme (needed for all pages, not just publisher)
     const theme = localStorage.getItem('theme');
-    if (theme === 'light') document.documentElement.setAttribute('data-theme', 'light');
+    if (theme === 'light') {
+      this.isDarkMode = false;
+      document.documentElement.setAttribute('data-theme', 'light');
+    }
+  }
+
+  toggleTheme() {
+    this.isDarkMode = !this.isDarkMode;
+    const theme = this.isDarkMode ? 'dark' : 'light';
+    document.documentElement.setAttribute('data-theme', theme);
+    localStorage.setItem('theme', theme);
   }
 
   toggleDrawer() {

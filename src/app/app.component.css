@@ -175,3 +175,46 @@
   min-width: 0;
   overflow-y: auto;
 }
+
+/* ---- Drawer Bottom: Theme Toggle ---- */
+.drawer-bottom {
+  margin-top: auto;
+  padding: 0.5rem 0;
+  border-top: 1px solid var(--border-color);
+}
+
+.theme-toggle-btn {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  width: 100%;
+  padding: 0.6rem 1rem;
+  background: transparent;
+  border: none;
+  border-left: 3px solid transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  white-space: nowrap;
+  overflow: hidden;
+  transition: all var(--transition-fast);
+  font-size: 0.875rem;
+  font-weight: 500;
+  font-family: inherit;
+  text-align: left;
+}
+
+.app-shell.drawer-collapsed .theme-toggle-btn {
+  padding: 0.6rem;
+  justify-content: center;
+}
+
+.theme-toggle-btn:hover {
+  color: var(--text-primary);
+  background: var(--bg-secondary);
+}
+
+.theme-toggle-btn .icon {
+  width: 18px;
+  height: 18px;
+  flex-shrink: 0;
+}

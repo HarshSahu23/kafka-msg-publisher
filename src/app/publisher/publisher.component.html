@@ -33,136 +33,14 @@
     </div>
   </header>
 
-  <!-- Settings Panel -->
+  <!-- Settings Dialog -->
   @if (showSettings) {
-    <div class="settings-panel card animate-fade-in">
-      <div class="settings-header">
-        <h2>Configuration</h2>
-        <button class="theme-toggle-btn" (click)="toggleTheme()" title="Toggle theme">
-          @if (isDarkMode) {
-            <svg class="icon" viewBox="0 0 24 24" fill="none">
-              <circle cx="12" cy="12" r="5" stroke="currentColor" stroke-width="2"/>
-              <path d="M12 1V3M12 21V23M4.22 4.22L5.64 5.64M18.36 18.36L19.78 19.78M1 12H3M21 12H23M4.22 19.78L5.64 18.36M18.36 5.64L19.78 4.22" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
-            </svg>
-          } @else {
-            <svg class="icon" viewBox="0 0 24 24" fill="none">
-              <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-            </svg>
-          }
-        </button>
-      </div>
-      <div class="settings-grid">
-        <div class="form-group">
-          <label for="broker">Broker Address</label>
-          <input id="broker" class="input" [(ngModel)]="config.broker" placeholder="localhost:9092" />
-        </div>
-        <div class="form-group">
-          <label for="topic">Topic</label>
-          <input id="topic" class="input" [(ngModel)]="config.topic" placeholder="my-topic" />
-        </div>
-        <div class="form-group">
-          <label for="clientId">Client ID</label>
-          <input id="clientId" class="input" [(ngModel)]="config.client_id" placeholder="kafka-msg-publisher" />
-        </div>
-      </div>
-      <!-- Security Settings -->
-      <div class="security-section">
-        <div class="security-header" (click)="showSecuritySettings = !showSecuritySettings">
-          <h3>Security</h3>
-          <svg class="icon chevron" [class.rotated]="showSecuritySettings" viewBox="0 0 24 24" fill="none">
-            <path d="M6 9L12 15L18 9" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-          </svg>
-        </div>
-        @if (showSecuritySettings) {
-          <div class="security-content animate-fade-in">
-            <div class="form-group">
-              <label for="securityProtocol">Security Protocol</label>
-              <select id="securityProtocol" class="input" [(ngModel)]="config.security_protocol">
-                <option value="Plaintext">PLAINTEXT</option>
-                <option value="Ssl">SSL</option>
-                <option value="SaslPlaintext">SASL_PLAINTEXT</option>
-                <option value="SaslSsl">SASL_SSL</option>
-              </select>
-            </div>
-
-            @if (config.security_protocol === 'SaslPlaintext' || config.security_protocol === 'SaslSsl') {
-              <div class="form-group">
-                <label for="saslMechanism">SASL Mechanism</label>
-                <select id="saslMechanism" class="input" [(ngModel)]="config.sasl_mechanism">
-                  <option value="Plain">PLAIN</option>
-                  <option value="ScramSha256">SCRAM-SHA-256</option>
-                  <option value="ScramSha512">SCRAM-SHA-512</option>
-                </select>
-              </div>
-              <div class="settings-grid">
-                <div class="form-group">
-                  <label for="saslUsername">SASL Username</label>
-                  <input id="saslUsername" class="input" [(ngModel)]="config.sasl_username" placeholder="username" />
-                </div>
-                <div class="form-group">
-                  <label for="saslPassword">SASL Password</label>
-                  <input id="saslPassword" class="input" type="password" [(ngModel)]="config.sasl_password" placeholder="password" />
-                </div>
-              </div>
-            }
-
-            @if (config.security_protocol === 'Ssl' || config.security_protocol === 'SaslSsl') {
-              <div class="ssl-settings">
-                <div class="form-group">
-                  <label for="caCert">CA Certificate (PEM)</label>
-                  <div class="file-input-group">
-                    <input id="caCert" class="input" [(ngModel)]="config.ssl_ca_cert_path" placeholder="Path to CA certificate (optional, uses system certs if empty)" />
-                    <button class="btn btn-sm" (click)="browseCertFile('ssl_ca_cert_path')">Browse</button>
-                  </div>
-                </div>
-                <div class="form-group">
-                  <label for="clientCert">Client Certificate (PEM) — for mTLS</label>
-                  <div class="file-input-group">
-                    <input id="clientCert" class="input" [(ngModel)]="config.ssl_client_cert_path" placeholder="Path to client certificate (optional)" />
-                    <button class="btn btn-sm" (click)="browseCertFile('ssl_client_cert_path')">Browse</button>
-                  </div>
-                </div>
-                <div class="form-group">
-                  <label for="clientKey">Client Key (PEM) — for mTLS</label>
-                  <div class="file-input-group">
-                    <input id="clientKey" class="input" [(ngModel)]="config.ssl_client_key_path" placeholder="Path to client private key (optional)" />
-                    <button class="btn btn-sm" (click)="browseCertFile('ssl_client_key_path')">Browse</button>
-                  </div>
-                </div>
-                <div class="form-group checkbox-group">
-                  <label>
-                    <input type="checkbox" [(ngModel)]="config.ssl_skip_verification" />
-                    <span>Skip certificate verification (insecure, for testing only)</span>
-                  </label>
-                </div>
-              </div>
-            }
-          </div>
-        }
-      </div>
-      <div class="settings-actions">
-        @if (isTesting) {
-          <button class="btn btn-danger" (click)="cancelTestConnection()">
-            Cancel
-          </button>
-        } @else {
-          <button class="btn" (click)="testConnection()" [disabled]="isLoading">
-            Test Connection
-          </button>
-        }
-        @if (isLoading) {
-          <span class="testing-indicator">
-            <span class="spinner"></span>
-          </span>
-        }
-        @if (!isLoading && connectionStatus === 'connected') {
-          <span class="badge badge-success">Connected</span>
-        } @else if (!isLoading && connectionStatus === 'error') {
-          <span class="badge badge-error">Failed</span>
-        }
-        <button class="btn btn-primary" (click)="saveConfig()" [disabled]="isTesting">Save</button>
-      </div>
-    </div>
+    <app-kafka-config-dialog
+      [config]="config"
+      title="Publisher Configuration"
+      (saved)="onConfigSaved($event)"
+      (cancelled)="showSettings = false"
+    />
   }
 
   <!-- Main Content -->

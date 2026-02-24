@@ -2,6 +2,7 @@ import { Component, OnInit, HostListener, OnDestroy } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { TauriService, KafkaConfig, MessageEntry, ConsumedMessage } from '../services/tauri.service';
+import { KafkaConfigDialogComponent } from '../shared/kafka-config-dialog/kafka-config-dialog.component';
 
 /** Check if running inside the Tauri webview */
 function isTauri(): boolean {
@@ -13,7 +14,7 @@ type UnlistenFn = () => void;
 @Component({
   selector: 'app-publisher',
   standalone: true,
-  imports: [CommonModule, FormsModule],
+  imports: [CommonModule, FormsModule, KafkaConfigDialogComponent],
   templateUrl: './publisher.component.html',
   styleUrl: './publisher.component.css',
 })
@@ -40,17 +41,13 @@ export class PublisherComponent implements OnInit, OnDestroy {
   messages: MessageEntry[] = [];
   
   // UI state
-  isLoading = false;
   isSending = false;
   showSettings = false;
   isDragOver = false;
-  isTesting = false;
-  testingCancelled = false;
   connectionStatus: 'unknown' | 'connected' | 'error' | 'testing' = 'unknown';
-  
+
   // Theme
   isDarkMode = true;
-  showSecuritySettings = false;
 
   // Create Topic
   showCreateTopic = false;
@@ -150,11 +147,12 @@ export class PublisherComponent implements OnInit, OnDestroy {
     }
   }
 
-  async saveConfig() {
+  /** Called when the dialog emits a saved config */
+  async onConfigSaved(config: KafkaConfig) {
+    this.config = config;
+    this.showSettings = false;
     try {
       await this.tauriService.saveConfig(this.config);
-      this.showSettings = false;
-      // Re-check connection after config change
       this.checkConnectionWithSpinner();
     } catch (error) {
       console.error('Failed to save config:', error);
@@ -184,52 +182,8 @@ export class PublisherComponent implements OnInit, OnDestroy {
     this.connectionStatus = result;
   }
 
-  async testConnection() {
-    if (this.isTesting) return;
-    
-    this.isTesting = true;
-    this.isLoading = true;
-    this.testingCancelled = false;
-    this.connectionStatus = 'testing'; // Clear previous status, show spinner
-    
-    const startTime = Date.now();
-    let result: 'connected' | 'error' = 'error';
-    
-    try {
-      await this.tauriService.testConnection(10); // 10 second timeout for remote/SASL brokers
-      if (!this.testingCancelled) {
-        result = 'connected';
-      }
-    } catch (error) {
-      if (!this.testingCancelled) {
-        result = 'error';
-        console.error('Connection test failed:', error);
-      }
-    }
-    
-    // Ensure minimum 800ms spinner duration
-    const elapsed = Date.now() - startTime;
-    if (elapsed < 800 && !this.testingCancelled) {
-      await this.delay(800 - elapsed);
-    }
-    
-    if (!this.testingCancelled) {
-      this.connectionStatus = result;
-    }
-    
-    this.isTesting = false;
-    this.isLoading = false;
-  }
-
   private delay(ms: number): Promise<void> {
     return new Promise(resolve => setTimeout(resolve, ms));
-  }
-
-  cancelTestConnection() {
-    this.testingCancelled = true;
-    this.isTesting = false;
-    this.isLoading = false;
-    this.connectionStatus = 'unknown';
   }
 
   async sendMessage() {
@@ -293,29 +247,6 @@ export class PublisherComponent implements OnInit, OnDestroy {
     }
   }
 
-  async browseCertFile(field: 'ssl_ca_cert_path' | 'ssl_client_cert_path' | 'ssl_client_key_path') {
-    if (!isTauri()) return;
-    try {
-      const { open } = await import('@tauri-apps/plugin-dialog');
-
-      const selected = await open({
-        multiple: false,
-        filters: [{
-          name: 'Certificate Files',
-          extensions: ['pem', 'crt', 'cert', 'key', 'p12']
-        }, {
-          name: 'All Files',
-          extensions: ['*']
-        }]
-      });
-
-      if (selected && typeof selected === 'string') {
-        this.config[field] = selected;
-      }
-    } catch (error) {
-      console.error('Failed to select certificate file:', error);
-    }
-  }
 
   getSecurityLabel(): string {
     switch (this.config.security_protocol) {

@@ -6,6 +6,9 @@ export const routes: Routes = [
     path: '',
     component: PublisherComponent,
   },
-  // Future route:
-  // { path: 'shaper', component: ShaperComponent },
+  {
+    path: 'shaper',
+    loadComponent: () =>
+      import('./shaper/shaper.component').then(m => m.ShaperComponent),
+  },
 ];
